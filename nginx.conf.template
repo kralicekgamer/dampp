@@ -1,0 +1,26 @@
+server {
+    listen 80;
+    server_name _;
+    root /var/www/html;
+    index index.php index.html;
+
+    # resolver + promenna ve fastcgi_pass = nginx nastartuje i kdyz php nebezi (pak 502)
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=5s;
+
+    # skryte soubory (.env, .git, ...) nikdy neposilat
+    location ~ /\. {
+        deny all;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ \.php$ {
+        try_files $uri =404;
+        set $php php:9000;
+        fastcgi_pass $php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+    }
+}
