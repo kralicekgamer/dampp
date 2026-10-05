@@ -24,7 +24,7 @@ The installer creates an isolated environment in `$HOME/.local/share/dampp` and 
 dampp
 ```
 
-Pull the images you are missing, then start the services you want. The interface is in Czech.
+Pull the images you are missing, then start the services you want.
 
 | Key | Action |
 |---|---|

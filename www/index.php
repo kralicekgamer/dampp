@@ -1,5 +1,5 @@
 <?php
-// dampp landing page - klidne ji smaz nebo nahrad vlastnim index.php
+// dampp landing page - feel free to delete it or replace it with your own index.php
 if (isset($_GET['phpinfo'])) {
     phpinfo();
     exit;
@@ -9,10 +9,10 @@ $host = explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0];
 $pmaUrl = "http://$host:" . (getenv('PMA_PORT') ?: '8080');
 $dbPort = getenv('MARIADB_PORT') ?: '3306';
 
-// stav databaze
+// database status
 $dbOk = false;
 if (!extension_loaded('mysqli')) {
-    $dbInfo = 'rozšíření mysqli se ještě instaluje – zkus to za chvíli';
+    $dbInfo = 'the mysqli extension is still installing – try again in a moment';
 } else {
     mysqli_report(MYSQLI_REPORT_OFF);
     $db = mysqli_init();
@@ -22,16 +22,16 @@ if (!extension_loaded('mysqli')) {
         $dbInfo = $db->server_info;
         $db->close();
     } else {
-        $dbInfo = 'neběží nebo nejde přihlásit';
+        $dbInfo = 'not running or login failed';
     }
 }
 
-// je phpMyAdmin nahore? (z kontejneru php je dostupny jako host "phpmyadmin")
+// is phpMyAdmin up? (reachable from the php container as host "phpmyadmin")
 $pma = @fsockopen('phpmyadmin', 80, $errno, $errstr, 1);
 $pmaOk = (bool) $pma;
 if ($pma) fclose($pma);
 
-// slozky ve web rootu = projekty
+// folders in the web root = projects
 $projects = [];
 foreach (scandir(__DIR__) as $entry) {
     if ($entry[0] !== '.' && is_dir(__DIR__ . '/' . $entry)) $projects[] = $entry;
@@ -39,7 +39,7 @@ foreach (scandir(__DIR__) as $entry) {
 $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES);
 ?>
 <!doctype html>
-<html lang="cs">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -73,35 +73,35 @@ $e = fn(string $s): string => htmlspecialchars($s, ENT_QUOTES);
 <body>
 <main>
   <h1>d<span>ampp</span></h1>
-  <p class="lead">Lokální nginx, PHP a MariaDB v kontejnerech.</p>
+  <p class="lead">Local nginx, PHP and MariaDB in containers.</p>
 
-  <h2>Stav</h2>
+  <h2>Status</h2>
   <div class="grid">
     <div class="card"><b><span class="dot ok"></span>nginx</b><small><?= $e($_SERVER['SERVER_SOFTWARE'] ?? '') ?></small></div>
     <div class="card"><b><span class="dot ok"></span>PHP</b><small><?= $e(PHP_VERSION) ?></small></div>
     <div class="card"><b><span class="dot <?= $dbOk ? 'ok' : '' ?>"></span>MariaDB</b><small><?= $e($dbInfo) ?></small></div>
   </div>
 
-  <h2>Nástroje</h2>
+  <h2>Tools</h2>
   <div class="grid">
-    <a class="card" href="<?= $e($pmaUrl) ?>"><b><span class="dot <?= $pmaOk ? 'ok' : '' ?>"></span>phpMyAdmin</b><small><?= $pmaOk ? 'správa databáze' : 'neběží – spusť ho v dampp' ?></small></a>
-    <a class="card" href="?phpinfo"><b>phpinfo()</b><small>konfigurace a rozšíření PHP</small></a>
+    <a class="card" href="<?= $e($pmaUrl) ?>"><b><span class="dot <?= $pmaOk ? 'ok' : '' ?>"></span>phpMyAdmin</b><small><?= $pmaOk ? 'database administration' : 'not running – start it in dampp' ?></small></a>
+    <a class="card" href="?phpinfo"><b>phpinfo()</b><small>PHP configuration and extensions</small></a>
   </div>
 
-  <h2>Projekty</h2>
+  <h2>Projects</h2>
   <div class="grid">
     <?php foreach ($projects as $p): ?>
       <a class="card" href="<?= $e(rawurlencode($p)) ?>/"><b><?= $e($p) ?></b><small>/<?= $e($p) ?>/</small></a>
     <?php endforeach; ?>
     <?php if (!$projects): ?>
-      <div class="card"><b>Zatím nic</b><small>Vytvoř složku ve web rootu a objeví se tady.</small></div>
+      <div class="card"><b>Nothing yet</b><small>Create a folder in the web root and it will show up here.</small></div>
     <?php endif; ?>
   </div>
 
-  <h2>Připojení k databázi</h2>
+  <h2>Database connection</h2>
   <div class="card">
-    <small>Z PHP: host <code>mariadb</code>, port <code>3306</code>, uživatel <code>root</code>.<br>
-    Z počítače (DBeaver, <code>mariadb</code> klient…): <code>127.0.0.1:<?= $e($dbPort) ?></code>. Port databáze není web, v prohlížeči se neotevře.</small>
+    <small>From PHP: host <code>mariadb</code>, port <code>3306</code>, user <code>root</code>.<br>
+    From your computer (DBeaver, the <code>mariadb</code> client…): <code>127.0.0.1:<?= $e($dbPort) ?></code>. The database port is not a website, it will not open in a browser.</small>
   </div>
 </main>
 </body>

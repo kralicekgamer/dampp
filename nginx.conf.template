@@ -4,10 +4,10 @@ server {
     root /var/www/html;
     index index.php index.html;
 
-    # resolver + promenna ve fastcgi_pass = nginx nastartuje i kdyz php nebezi (pak 502)
+    # resolver + a variable in fastcgi_pass = nginx starts even when php is down (then 502)
     resolver ${NGINX_LOCAL_RESOLVERS} valid=5s;
 
-    # skryte soubory (.env, .git, ...) nikdy neposilat
+    # never serve hidden files (.env, .git, ...)
     location ~ /\. {
         deny all;
     }

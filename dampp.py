@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dampp - XAMPP pro Linux: TUI nad docker compose (MariaDB, nginx, PHP, phpMyAdmin)."""
+"""dampp - XAMPP for Linux: a TUI over docker compose (MariaDB, nginx, PHP, phpMyAdmin)."""
 
 import asyncio
 import json
@@ -20,7 +20,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Label, RichLog, Static
 
 HERE = Path(__file__).resolve().parent
-# nastaveni a web root ziji mimo slozku s aplikaci, aby je reinstalace nesmazala
+# settings and the web root live outside the app folder so a reinstall cannot delete them
 CONFIG = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "dampp" / "config.env"
 
 DEFAULTS = {
@@ -34,76 +34,76 @@ DEFAULTS = {
     "PMA_PORT": "8080",
     "WEB_ROOT": str(Path.home() / "dampp" / "www"),
 }
-# sluzba -> (klic verze, klic portu)
+# service -> (version key, port key)
 SERVICES = {
     "mariadb": ("MARIADB_TAG", "MARIADB_PORT"),
     "nginx": ("NGINX_TAG", "NGINX_PORT"),
     "php": ("PHP_TAG", None),
     "phpmyadmin": ("PMA_TAG", "PMA_PORT"),
 }
-# sekce nastaveni (klavesa n): nazev -> [(klic, popisek)]
+# settings sections (key n): name -> [(key, label)]
 SECTIONS = {
-    "MariaDB": [("MARIADB_TAG", "Verze"), ("MARIADB_PORT", "Port"), ("MARIADB_ROOT_PASSWORD", "Root heslo")],
-    "nginx": [("NGINX_TAG", "Verze"), ("NGINX_PORT", "Port"), ("WEB_ROOT", "Web root")],
-    "PHP": [("PHP_TAG", "Verze")],
-    "phpMyAdmin": [("PMA_TAG", "Verze"), ("PMA_PORT", "Port")],
+    "MariaDB": [("MARIADB_TAG", "Version"), ("MARIADB_PORT", "Port"), ("MARIADB_ROOT_PASSWORD", "Root password")],
+    "nginx": [("NGINX_TAG", "Version"), ("NGINX_PORT", "Port"), ("WEB_ROOT", "Web root")],
+    "PHP": [("PHP_TAG", "Version")],
+    "phpMyAdmin": [("PMA_TAG", "Version"), ("PMA_PORT", "Port")],
 }
-TAG = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")  # platny tag docker image
+TAG = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*")  # valid docker image tag
 PORTS = {"MARIADB_PORT": "MariaDB", "NGINX_PORT": "nginx", "PMA_PORT": "phpMyAdmin"}
 LEVELS = {"INFO": "blue", "OK": "green", "WARN": "yellow", "ERROR": "red"}
-LOG_TAIL = 20  # kolik radku historie ukaze klavesa l
-INDENT = 29  # sirka sloupcu "cas  UROVEN  sluzba  " v konzoli
-# typicke chyby dockeru -> rada (hleda se ve vystupu prikazu, malymi pismeny)
+LOG_TAIL = 20  # how many lines of history the l key shows
+INDENT = 29  # width of the "time  LEVEL  service  " columns in the console
+# common docker errors -> hint (matched against the lowercased command output)
 HINTS = [
-    (("address already in use", "port is already allocated"), "port už používá něco jiného – změň ho v nastavení (n)"),
-    (("manifest unknown", "manifest for", "not found: manifest"), "taková verze image neexistuje – zkontroluj verzi v nastavení (n)"),
-    (("permission denied",), "chybí práva k Dockeru: sudo usermod -aG docker $USER, pak se odhlas a přihlas"),
-    (("cannot connect", "failed to connect"), "Docker neběží? zkus: sudo systemctl start docker"),
-    (("no such host", "timeout", "tls handshake"), "nejde se připojit k registru – zkontroluj internet"),
+    (("address already in use", "port is already allocated"), "the port is already in use – change it in settings (n)"),
+    (("manifest unknown", "manifest for", "not found: manifest"), "no such image version – check the version in settings (n)"),
+    (("permission denied",), "no permission to use Docker: sudo usermod -aG docker $USER, then log out and back in"),
+    (("cannot connect", "failed to connect"), "is Docker running? try: sudo systemctl start docker"),
+    (("no such host", "timeout", "tls handshake"), "cannot reach the registry – check your internet connection"),
 ]
-# sluzby s webovym rozhranim -> klic portu (klavesa o)
+# services with a web interface -> port key (key o)
 WEB = {"nginx": "NGINX_PORT", "phpmyadmin": "PMA_PORT"}
-# napoveda (klavesa h): skupina -> [(klavesy, popis)]; male pismeno = vybrana sluzba, velke = vsechny
+# help (key h): group -> [(keys, description)]; lowercase = selected service, uppercase = all
 HELP = {
-    "Výběr": [
-        ("↑ ↓  k j", "předchozí / další služba"),
-        ("1 2 3 4", "skok na první až čtvrtou službu"),
+    "Selection": [
+        ("↑ ↓  k j", "previous / next service"),
+        ("1 2 3 4", "jump to the first to fourth service"),
     ],
-    "Vybraná služba": [
-        ("Enter  mezerník", "stáhnout → spustit → zastavit"),
+    "Selected service": [
+        ("Enter  Space", "pull → start → stop"),
         ("s", "start"),
         ("x", "stop"),
         ("r", "restart"),
         ("p", "pull image"),
-        ("l", "logy zapnout / vypnout"),
-        ("o", "otevřít v prohlížeči (nginx, phpmyadmin)"),
+        ("l", "logs on / off"),
+        ("o", "open in the browser (nginx, phpmyadmin)"),
     ],
-    "Všechny služby": [
-        ("S", "start všech stažených"),
-        ("X", "stop všech"),
-        ("R", "restart všech běžících"),
-        ("P", "pull všech chybějících"),
+    "All services": [
+        ("S", "start all pulled"),
+        ("X", "stop all"),
+        ("R", "restart all running"),
+        ("P", "pull all missing"),
     ],
-    "Aplikace": [
-        ("n  F2", "nastavení"),
-        ("c", "vyčistit výstup"),
-        ("PgUp PgDn", "posun výstupu"),
-        ("h  ?  F1", "tato nápověda"),
-        ("d", "konec, kontejnery běží dál"),
-        ("q", "konec a zastavit kontejnery"),
+    "Application": [
+        ("n  F2", "settings"),
+        ("c", "clear the output"),
+        ("PgUp PgDn", "scroll the output"),
+        ("h  ?  F1", "this help"),
+        ("d", "quit, leave containers running"),
+        ("q", "quit and stop containers"),
     ],
 }
 ACTIONS = {
-    "start": ("startuji…", [["up", "-d"]]),
-    "stop": ("zastavuji…", [["stop"]]),
-    # stop + up misto `restart`, aby se projevila zmena nastaveni
-    "restart": ("restartuji…", [["stop"], ["up", "-d"]]),
-    "pull": ("stahuji…", [["pull"]]),
+    "start": ("starting…", [["up", "-d"]]),
+    "stop": ("stopping…", [["stop"]]),
+    # stop + up instead of `restart` so changed settings take effect
+    "restart": ("restarting…", [["stop"], ["up", "-d"]]),
+    "pull": ("pulling…", [["pull"]]),
 }
 
 
 def find_runtime() -> tuple[list[str], str] | None:
-    """Vrati (compose prikaz, binarka runtime) nebo None."""
+    """Return (compose command, runtime binary) or None."""
     for rt in ("docker", "podman"):
         if shutil.which(rt) and subprocess.run([rt, "compose", "version"], capture_output=True).returncode == 0:
             return [rt, "compose"], rt
@@ -125,11 +125,11 @@ def load_env() -> dict[str, str]:
 def save_env(cfg: dict[str, str]) -> None:
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     CONFIG.write_text("".join(f"{k}={v}\n" for k, v in cfg.items()))
-    CONFIG.chmod(0o600)  # je v nem heslo k databazi
+    CONFIG.chmod(0o600)  # it holds the database password
 
 
 def ensure_web_root(cfg: dict[str, str]) -> None:
-    """Vytvori web root (jinak by ho docker zalozil jako root) a do prazdneho da landing page."""
+    """Create the web root (docker would create it as root) and put the landing page into an empty one."""
     root = Path(cfg["WEB_ROOT"])
     root.mkdir(parents=True, exist_ok=True)
     landing = HERE / "www" / "index.php"
@@ -149,7 +149,7 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 
 async def stream(*args: str, on_line) -> int:
-    """Spusti prikaz a kazdy radek vystupu preda on_line. Pri zruseni proces ukonci."""
+    """Run a command and pass each output line to on_line. Terminates the process if cancelled."""
     proc = await asyncio.create_subprocess_exec(
         *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
     )
@@ -164,9 +164,9 @@ async def stream(*args: str, on_line) -> int:
 
 class Settings(ModalScreen[dict | None]):
     BINDINGS = [
-        ("escape", "cancel", "Zrušit"),
-        ("down", "app.focus_next", "Další pole"),
-        ("up", "app.focus_previous", "Předchozí pole"),
+        ("escape", "cancel", "Cancel"),
+        ("down", "app.focus_next", "Next field"),
+        ("up", "app.focus_previous", "Previous field"),
     ]
 
     def __init__(self, cfg: dict[str, str]) -> None:
@@ -175,7 +175,7 @@ class Settings(ModalScreen[dict | None]):
 
     def compose(self) -> ComposeResult:
         dialog = Vertical(id="dialog")
-        dialog.border_title = "Nastavení"
+        dialog.border_title = "Settings"
         with dialog:
             for name, fields in SECTIONS.items():
                 section = Vertical(classes="section")
@@ -187,8 +187,8 @@ class Settings(ModalScreen[dict | None]):
                             yield Input(self.cfg[key], id=key.lower(), compact=True)
             yield Label("", id="error")
             with Horizontal(id="buttons"):
-                yield Button("Uložit", id="save", variant="primary")
-                yield Button("Zrušit", id="cancel")
+                yield Button("Save", id="save", variant="primary")
+                yield Button("Cancel", id="cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         event.stop()
@@ -203,23 +203,23 @@ class Settings(ModalScreen[dict | None]):
     def save(self) -> None:
         cfg = {key: self.query_one(f"#{key.lower()}", Input).value.strip() or DEFAULTS[key] for key in DEFAULTS}
         error = self.query_one("#error", Label)
-        used: dict[str, str] = {}  # port -> sluzba
+        used: dict[str, str] = {}  # port -> service
         for key, name in PORTS.items():
             if not (cfg[key].isdigit() and 0 < int(cfg[key]) < 65536):
-                error.update(f"[red]✗ {name}: port musí být číslo 1–65535[/]")
+                error.update(f"[red]✗ {name}: port must be a number 1–65535[/]")
                 return
             if cfg[key] in used:
-                error.update(f"[red]✗ {name} a {used[cfg[key]]} nemůžou mít stejný port {cfg[key]}[/]")
+                error.update(f"[red]✗ {name} and {used[cfg[key]]} cannot share port {cfg[key]}[/]")
                 return
             used[cfg[key]] = name
         for name, (tag_key, _) in SERVICES.items():
             if not TAG.fullmatch(cfg[tag_key]):
-                error.update(f"[red]✗ {name}: neplatná verze (povolená jsou písmena, číslice, tečka, pomlčka)[/]")
+                error.update(f"[red]✗ {name}: invalid version (letters, digits, dot and dash only)[/]")
                 return
-        # php image musi byt fpm varianta: "8.4" -> "8.4-fpm", "latest" -> "fpm"
+        # the php image must be an fpm variant: "8.4" -> "8.4-fpm", "latest" -> "fpm"
         if "fpm" not in cfg["PHP_TAG"]:
             cfg["PHP_TAG"] = "fpm" if cfg["PHP_TAG"] == "latest" else cfg["PHP_TAG"] + "-fpm"
-        # relativni cestu ber od domovske slozky, ne od slozky aplikace
+        # a relative path is taken from the home directory, not the app folder
         cfg["WEB_ROOT"] = str(Path.home() / Path(cfg["WEB_ROOT"]).expanduser())
         self.dismiss(cfg)
 
@@ -228,7 +228,7 @@ class Settings(ModalScreen[dict | None]):
 
 
 class Help(ModalScreen[None]):
-    BINDINGS = [("escape,h,q,question_mark,f1", "dismiss", "Zavřít")]
+    BINDINGS = [("escape,h,q,question_mark,f1", "dismiss", "Close")]
 
     def compose(self) -> ComposeResult:
         text = Text()
@@ -238,9 +238,9 @@ class Help(ModalScreen[None]):
                 text.append(f"  {key:<17}", "bold yellow")
                 text.append(f"{description}\n")
             text.append("\n")
-        text.append("h / Esc = zavřít", "dim")
+        text.append("h / Esc = close", "dim")
         dialog = VerticalScroll(Static(text), id="help")
-        dialog.border_title = "Klávesy"
+        dialog.border_title = "Keys"
         yield dialog
 
 
@@ -271,16 +271,16 @@ class Dampp(App):
     #buttons { height: 3; align: right middle; }
     #buttons Button { margin-left: 1; }
     """
-    # v paticce jsou jen nejpouzivanejsi klavesy, vsechny ukaze napoveda (h)
+    # the footer shows only the most used keys; help (h) lists all of them
     BINDINGS = [
-        Binding("enter,space", "smart", "Akce", key_display="Enter"),
+        Binding("enter,space", "smart", "Action", key_display="Enter"),
         Binding("s,a", "service('start')", "Start"),
         Binding("x", "service('stop')", "Stop"),
         Binding("r", "service('restart')", "Restart"),
-        Binding("l", "logs", "Logy"),
-        Binding("n,f2", "settings", "Nastavení"),
-        Binding("h,question_mark,f1", "help", "Nápověda"),
-        Binding("q", "quit", "Konec"),
+        Binding("l", "logs", "Logs"),
+        Binding("n,f2", "settings", "Settings"),
+        Binding("h,question_mark,f1", "help", "Help"),
+        Binding("q", "quit", "Quit"),
         Binding("up,k", "move(-1)", show=False),
         Binding("down,j", "move(1)", show=False),
         *(Binding(str(i + 1), f"jump({i})", show=False) for i in range(len(SERVICES))),
@@ -301,14 +301,14 @@ class Dampp(App):
         self.compose_cmd = [*compose_cmd, "--project-directory", str(HERE)]
         self.runtime = runtime
         self.cfg = load_env()
-        os.environ.update(self.cfg)  # compose.yaml bere verze a porty z prostredi
+        os.environ.update(self.cfg)  # compose.yaml reads versions and ports from the environment
         self.selected = 0
-        self.state: dict[str, str] = {}  # sluzba -> stav kontejneru z `compose ps`
-        self.pulled: dict[str, bool] = {}  # sluzba -> je image stazeny
-        self.busy: dict[str, str] = {}  # sluzba -> popis bezici akce
+        self.state: dict[str, str] = {}  # service -> container state from `compose ps`
+        self.pulled: dict[str, bool] = {}  # service -> is the image pulled
+        self.busy: dict[str, str] = {}  # service -> label of the running action
         self.log_svc: str | None = None
         self.announced = False
-        self.docker_error: str | None = None  # posledni vypsana chyba dockeru
+        self.docker_error: str | None = None  # last docker error printed
         self.quitting = False
 
     def compose(self) -> ComposeResult:
@@ -321,16 +321,16 @@ class Dampp(App):
                 yield Label(classes="status")
                 for action, variant in (("pull", "warning"), ("start", "success"), ("stop", "error"), ("restart", "default")):
                     button = Button(action.capitalize(), id=f"{action}-{svc}", variant=variant, classes=action)
-                    button.can_focus = False  # jen pro mys; Enter patri chytre akci, ne tlacitku
+                    button.can_focus = False  # mouse only; Enter belongs to the smart action, not a button
                     yield button
         out = RichLog(id="out")
-        out.can_focus = False  # jinak by konzole sebrala sipky pro vyber sluzby
+        out.can_focus = False  # otherwise the console would steal the arrow keys
         yield out
         yield Footer()
 
     async def on_mount(self) -> None:
         self.out = self.query_one("#out", RichLog)
-        self.out.border_title = "Výstup"
+        self.out.border_title = "Output"
         self.render_rows()
         self.prepare_web_root()
         await self.refresh_state()
@@ -340,16 +340,16 @@ class Dampp(App):
         try:
             ensure_web_root(self.cfg)
         except OSError as exc:
-            self.error(f"web root {self.cfg['WEB_ROOT']} nejde vytvořit: {exc.strerror}", hint="změň ho v nastavení (n)")
+            self.error(f"cannot create web root {self.cfg['WEB_ROOT']}: {exc.strerror}", hint="change it in settings (n)")
 
     def check_action(self, action: str, parameters: tuple) -> bool:
-        # nad otevrenym dialogem funguje jen jeho vlastni ovladani (tab, focus) a ukonceni
+        # while a dialog is open only its own controls (tab, focus) and quit work
         return len(self.screen_stack) == 1 or action in ("quit", "focus_next", "focus_previous")
 
-    # --- hlasky do konzole ------------------------------------------------
+    # --- console messages -------------------------------------------------
 
     def say(self, level: str, msg: str, svc: str = "dampp", hint: str | None = None) -> None:
-        """Radek `cas  UROVEN  sluzba  text`, pripadne s radou na dalsim radku."""
+        """A `time  LEVEL  service  text` line, optionally with a hint on the next line."""
         style = LEVELS[level]
         line = Text.assemble(
             (time.strftime("%H:%M:%S"), "dim"), "  ", (f"{level:<5}", f"bold {style}"), "  ",
@@ -373,10 +373,10 @@ class Dampp(App):
         self.say("ERROR", msg, svc, hint)
 
     def raw(self, svc: str, line: str) -> None:
-        """Surovy vystup dockeru - odsazeny, aby se nepletl s hlaskami aplikace."""
+        """Raw docker output, indented so it is not mistaken for app messages."""
         self.out.write(Text.assemble(" " * 17, (f"{svc:<10}│ ", "dim"), line))
 
-    # --- stav -------------------------------------------------------------
+    # --- state ------------------------------------------------------------
 
     def image(self, svc: str) -> str:
         return f"{svc}:{self.cfg[SERVICES[svc][0]]}"
@@ -384,23 +384,23 @@ class Dampp(App):
     async def refresh_state(self) -> None:
         rc, out = await run(*self.compose_cmd, "ps", "-a", "--format", "json")
         if rc != 0:
-            message = (out.strip().splitlines() or ["compose selhal"])[-1]
-            # stav se obnovuje kazde 2 s - stejnou chybu vypis jen jednou
+            message = (out.strip().splitlines() or ["compose failed"])[-1]
+            # state refreshes every 2 s - print the same error only once
             if message != self.docker_error:
                 self.docker_error = message
                 if "permission denied" in out.lower():
-                    self.error("nemáš práva k Dockeru", hint="sudo usermod -aG docker $USER, pak se odhlas "
-                                                             "a přihlas (aplikaci nepouštěj přes sudo)")
+                    self.error("no permission to use Docker", hint="sudo usermod -aG docker $USER, then log out "
+                                                                   "and back in (do not run dampp with sudo)")
                 else:
-                    self.error("Docker není dostupný", hint="běží daemon? zkus: sudo systemctl start docker")
+                    self.error("Docker is not available", hint="is the daemon running? try: sudo systemctl start docker")
                 self.raw("docker", message)
             self.render_rows()
             return
         if self.docker_error:
             self.docker_error = None
-            self.ok("Docker je zase dostupný")
+            self.ok("Docker is available again")
 
-        # compose vraci bud JSON pole, nebo jeden objekt na radek
+        # compose returns either a JSON array or one object per line
         text = out.strip()
         try:
             items = json.loads(text) if text.startswith("[") else [json.loads(l) for l in text.splitlines() if l]
@@ -408,15 +408,15 @@ class Dampp(App):
         except (ValueError, KeyError, TypeError):
             if self.docker_error != "format":
                 self.docker_error = "format"
-                self.error("nerozumím výstupu `compose ps`", hint="je potřeba novější Docker Compose (v2)")
+                self.error("cannot parse `compose ps` output", hint="a newer Docker Compose (v2) is required")
             self.render_rows()
             return
-        # sluzba, ktera bezela a prestala bez nasi akce (pad, zastaveni nebo smazani zvenci)
+        # a service that was running and stopped without our action (crash, stopped or removed externally)
         codes = {c["Service"]: c.get("ExitCode", "?") for c in items}
         for svc, old in self.state.items():
-            now = state.get(svc, "odstraněna")
+            now = state.get(svc, "removed")
             if old == "running" and now != "running" and svc not in self.busy and not self.quitting:
-                self.warn(f"přestala běžet sama od sebe (stav {now}, kód {codes.get(svc, '?')}) – logy: l", svc)
+                self.warn(f"stopped on its own (state {now}, exit code {codes.get(svc, '?')}) – logs: l", svc)
         self.state = state
 
         rc, out = await run(self.runtime, "images", "--format", "{{.Repository}}:{{.Tag}}")
@@ -429,9 +429,9 @@ class Dampp(App):
                 self.announced = True
                 missing = [self.image(s) for s in SERVICES if not self.pulled[s]]
                 if missing:
-                    self.warn(f"chybí image: {', '.join(missing)} – stáhni je tlačítkem Pull (p)")
+                    self.warn(f"missing images: {', '.join(missing)} – pull them with Enter or P")
                 else:
-                    self.ok("všechny image jsou stažené")
+                    self.ok("all images are pulled")
         self.render_rows()
 
     def render_rows(self) -> None:
@@ -447,15 +447,15 @@ class Dampp(App):
             if busy:
                 status = f"[yellow]◌ {busy}[/]"
             elif self.docker_error:
-                status = "[red]✗ nedostupné[/]"
+                status = "[red]✗ unavailable[/]"
             elif pulled is None:
                 status = "[dim]?[/]"
             elif not pulled:
-                status = "[yellow]✗ nestaženo[/]"
+                status = "[yellow]✗ not pulled[/]"
             elif running:
-                status = "[green]● běží[/]"
+                status = "[green]● running[/]"
             else:
-                status = "[dim]○ zastaveno[/]"
+                status = "[dim]○ stopped[/]"
             row.query_one(".status", Label).update(status)
 
             for action in ACTIONS:
@@ -463,7 +463,7 @@ class Dampp(App):
                 button.display = self.wanted(action, svc) and not self.docker_error
                 button.disabled = bool(busy)
 
-    # --- akce -------------------------------------------------------------
+    # --- actions ----------------------------------------------------------
 
     @property
     def current(self) -> str:
@@ -478,40 +478,40 @@ class Dampp(App):
         self.render_rows()
 
     def wanted(self, action: str, svc: str) -> bool:
-        """Dava akce pro sluzbu prave ted smysl? (stejne podminky jako viditelnost tlacitek)"""
+        """Does the action make sense for the service right now? (same rules as button visibility)"""
         pulled, running = self.pulled.get(svc), self.state.get(svc) == "running"
         return {"pull": pulled is False, "start": bool(pulled) and not running,
                 "stop": bool(pulled) and running, "restart": bool(pulled) and running}[action]
 
     def action_smart(self) -> None:
-        """Enter: nestazeno -> pull, zastaveno -> start, bezi -> stop."""
+        """Enter: not pulled -> pull, stopped -> start, running -> stop."""
         svc = self.current
         self.do(next((a for a in ("pull", "stop") if self.wanted(a, svc)), "start"), svc)
 
     def action_all(self, action: str) -> None:
         targets = [svc for svc in SERVICES if self.wanted(action, svc)]
         if not targets:
-            self.info(f"{action} všech: není co dělat")
+            self.info(f"{action} all: nothing to do")
         for svc in targets:
             self.do(action, svc)
 
     def action_open(self) -> None:
         svc = self.current
         if svc not in WEB:
-            self.warn("nemá webové rozhraní – otevřít jde nginx a phpmyadmin", svc)
+            self.warn("has no web interface – only nginx and phpmyadmin can be opened", svc)
         elif self.state.get(svc) != "running":
-            self.warn("neběží – nejdřív ji spusť (s)", svc)
+            self.warn("is not running – start it first (s)", svc)
         else:
             port = self.cfg[WEB[svc]]
             url = "http://localhost" if port == "80" else f"http://localhost:{port}"
             opener = shutil.which("xdg-open")
             if opener:
-                # vystup prohlizece nesmi do terminalu, rozbil by TUI
+                # browser output must not reach the terminal, it would corrupt the TUI
                 subprocess.Popen([opener, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                  start_new_session=True)
-                self.info(f"otevírám {url}", svc)
+                self.info(f"opening {url}", svc)
             else:
-                self.warn(f"chybí xdg-open – otevři ručně {url}", svc)
+                self.warn(f"xdg-open not found – open {url} yourself", svc)
 
     def action_clear(self) -> None:
         self.out.clear()
@@ -520,7 +520,7 @@ class Dampp(App):
         self.push_screen(Help())
 
     def action_detach(self) -> None:
-        """Konec bez zastaveni kontejneru."""
+        """Quit without stopping the containers."""
         self.exit()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -536,7 +536,7 @@ class Dampp(App):
         if self.busy.get(svc):
             return
         if action != "pull" and self.pulled.get(svc) is False:
-            self.warn(f"image {self.image(svc)} není stažený – nejdřív Pull (p)", svc)
+            self.warn(f"image {self.image(svc)} is not pulled – pull it first (p)", svc)
             return
         label, commands = ACTIONS[action]
         self.busy[svc] = label
@@ -555,14 +555,14 @@ class Dampp(App):
                 if rc != 0:
                     text = "\n".join(output)
                     hint = next((h for needles, h in HINTS if any(n in text for n in needles)),
-                                "podrobnosti jsou ve výpisu výše")
-                    self.error(f"{action} selhal (kód {rc})", svc, hint)
+                                "see the output above for details")
+                    self.error(f"{action} failed (exit code {rc})", svc, hint)
                     break
             else:
-                self.ok(f"{action} hotov ({time.monotonic() - started:.0f} s)", svc)
+                self.ok(f"{action} done ({time.monotonic() - started:.0f} s)", svc)
         finally:
             self.busy.pop(svc, None)
-            self.state.pop(svc, None)  # zmenu stavu jsme zpusobili my, nehlasit ji jako pad
+            self.state.pop(svc, None)  # we caused this state change, do not report it as a crash
         await self.refresh_state()
 
     def action_scroll_log(self, direction: int) -> None:
@@ -576,31 +576,31 @@ class Dampp(App):
         self.workers.cancel_group(self, "logs")
         previous, self.log_svc = self.log_svc, None
         if previous:
-            self.info("logy vypnuty", previous)
+            self.info("logs off", previous)
         if previous == svc:
             return
         self.log_svc = svc
-        self.info(f"logy zapnuty – posledních {LOG_TAIL} řádků + nové (l = vypnout)", svc)
+        self.info(f"logs on – last {LOG_TAIL} lines, then live (l = off)", svc)
         self.follow_logs(svc)
 
     @work(group="logs")
     async def follow_logs(self, svc: str) -> None:
         await stream(*self.compose_cmd, "logs", "-f", "--tail", str(LOG_TAIL), "--no-log-prefix", svc,
                      on_line=lambda line: self.raw(svc, line))
-        # sem se dojde jen kdyz proud skoncil sam (pri vypnuti je worker zrusen)
+        # only reached when the stream ended by itself (turning logs off cancels the worker)
         if self.log_svc == svc:
             self.log_svc = None
-            self.info("logy skončily – kontejner se zastavil (l = zapnout znovu)", svc)
+            self.info("logs ended – the container stopped (l = follow again)", svc)
 
     async def action_quit(self) -> None:
-        """Pred ukoncenim zastavi vsechny kontejnery."""
+        """Stop all containers before quitting."""
         if self.quitting:
             return
         self.quitting = True
         self.workers.cancel_group(self, "logs")
-        self.info("ukončuji – zastavuji všechny kontejnery…")
+        self.info("quitting – stopping all containers…")
         for svc in SERVICES:
-            self.busy[svc] = "zastavuji…"
+            self.busy[svc] = "stopping…"
         self.render_rows()
         await stream(*self.compose_cmd, "stop", on_line=lambda line: self.raw("docker", line))
         self.exit()
@@ -610,7 +610,7 @@ class Dampp(App):
             if cfg is None or cfg == self.cfg:
                 return
             changes = ", ".join(
-                f"{key} změněno" if "PASSWORD" in key else f"{key} {self.cfg[key]} → {value}"
+                f"{key} changed" if "PASSWORD" in key else f"{key} {self.cfg[key]} → {value}"
                 for key, value in cfg.items() if value != self.cfg[key]
             )
             self.cfg = cfg
@@ -618,10 +618,10 @@ class Dampp(App):
             try:
                 save_env(cfg)
             except OSError as exc:
-                self.error(f"nastavení nejde uložit do {CONFIG}: {exc.strerror}")
+                self.error(f"cannot save settings to {CONFIG}: {exc.strerror}")
                 return
             self.prepare_web_root()
-            self.ok(f"nastavení uloženo: {changes} – projeví se po Start/Restart služby")
+            self.ok(f"settings saved: {changes} – applies after the service is started or restarted")
             self.run_worker(self.refresh_state())
 
         self.push_screen(Settings(self.cfg), done)
@@ -630,7 +630,7 @@ class Dampp(App):
 def main() -> None:
     found = find_runtime()
     if not found:
-        sys.exit("Nenašel jsem `docker compose` ani `podman compose`. Nainstaluj Docker nebo Podman s compose.")
+        sys.exit("Neither `docker compose` nor `podman compose` was found. Install Docker or Podman with compose.")
     Dampp(*found).run()
 
 

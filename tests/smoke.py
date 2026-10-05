@@ -79,24 +79,24 @@ async def main(tmp: Path) -> None:
         web_root = Path(app.cfg["WEB_ROOT"])
         assert web_root == tmp / "home" / "dampp" / "www", web_root
         assert (web_root / "index.php").exists(), "landing page not copied into web root"
-        assert "chybí image" in console()
-        assert "nestaženo" in status("mariadb") and "zastaveno" in status("nginx")
+        assert "missing images" in console()
+        assert "not pulled" in status("mariadb") and "stopped" in status("nginx")
 
         footer = [b.description for b in app.BINDINGS if b.show]
-        assert footer == ["Akce", "Start", "Stop", "Restart", "Logy", "Nastavení", "Nápověda", "Konec"], footer
+        assert footer == ["Action", "Start", "Stop", "Restart", "Logs", "Settings", "Help", "Quit"], footer
         assert app.focused is None, "nothing on the main screen should take focus"
 
         # start without image -> warning; Enter walks pull -> start -> stop
         await pilot.press("s"); await settle()
-        assert "není stažený" in console()
+        assert "is not pulled" in console()
         await pilot.press("enter"); await settle()
-        assert "pull hotov" in console() and "zastaveno" in status("mariadb")
+        assert "pull done" in console() and "stopped" in status("mariadb")
         await pilot.press("enter"); await settle()
-        assert "běží" in status("mariadb"), status("mariadb")
+        assert "running" in status("mariadb"), status("mariadb")
         await pilot.press("space"); await settle()
-        assert "zastaveno" in status("mariadb"), status("mariadb")
+        assert "stopped" in status("mariadb"), status("mariadb")
         await pilot.press("a"); await settle()  # old alias for start still works
-        assert "běží" in status("mariadb")
+        assert "running" in status("mariadb")
 
         # selection: arrows and number keys
         await pilot.press("down"); assert app.current == "nginx"
@@ -105,18 +105,18 @@ async def main(tmp: Path) -> None:
 
         # logs on / off
         await pilot.press("l"); await pilot.pause(0.4)
-        assert "logy zapnuty" in console() and "log line for nginx" in console()
+        assert "logs on" in console() and "log line for nginx" in console()
         await pilot.press("l"); await pilot.pause(0.2)
-        assert "logy vypnuty" in console()
+        assert "logs off" in console()
 
         # open in browser: only for a running web service
         await pilot.press("o"); await pilot.pause(0.2)
-        assert "neběží" in console() and not (state / "opened").exists()
+        assert "is not running" in console() and not (state / "opened").exists()
 
         # failing start -> error with a hint
         (state / "fail-nginx").touch()
         await pilot.press("s"); await settle()
-        assert "start selhal" in console() and "port už používá" in console()
+        assert "start failed" in console() and "port is already in use" in console()
         (state / "fail-nginx").unlink()
         await pilot.press("s"); await settle()
         await pilot.press("o"); await pilot.pause(0.5)
@@ -124,19 +124,19 @@ async def main(tmp: Path) -> None:
 
         # all services: P pulls the missing ones, S starts them, X stops everything
         await pilot.press("P"); await settle()
-        assert all("zastaveno" in status(svc) for svc in ("php", "phpmyadmin"))
+        assert all("stopped" in status(svc) for svc in ("php", "phpmyadmin"))
         await pilot.press("S"); await settle()
-        assert all("běží" in status(svc) for svc in dampp.SERVICES), [status(svc) for svc in dampp.SERVICES]
+        assert all("running" in status(svc) for svc in dampp.SERVICES), [status(svc) for svc in dampp.SERVICES]
         await pilot.press("X"); await settle()
-        assert not list(state.glob("run-*")) and "zastaveno" in status("nginx")
+        assert not list(state.glob("run-*")) and "stopped" in status("nginx")
         await pilot.press("X"); await pilot.pause(0.2)
-        assert "není co dělat" in console()
+        assert "nothing to do" in console()
 
         # service stopped behind our back -> warning
         await pilot.press("1", "s"); await settle()
         (state / "run-mariadb").unlink()
         await pilot.pause(2.5)
-        assert "přestala běžet" in console()
+        assert "stopped on its own" in console()
 
         # clear output
         await pilot.press("c"); await pilot.pause(0.2)
@@ -159,12 +159,12 @@ async def main(tmp: Path) -> None:
         error = lambda: str(app.screen.query_one("#error", Label).content)
         field = lambda name: app.screen.query_one(f"#{name}", Input)
         field("nginx_port").value = "abc"; await pilot.click("#save"); await pilot.pause(0.4)
-        assert "port musí být" in error()
+        assert "port must be" in error()
         field("nginx_port").value = "8080"; await pilot.click("#save"); await pilot.pause(0.4)
-        assert "stejný port" in error()
+        assert "cannot share port" in error()
         field("nginx_port").value = "81"; field("nginx_tag").value = "bad tag!"
         await pilot.click("#save"); await pilot.pause(0.4)
-        assert "neplatná verze" in error()
+        assert "invalid version" in error()
         field("nginx_tag").value = "1.27"; field("php_tag").value = "8.4"
         field("nginx_tag").focus(); await pilot.pause(0.1)
         await pilot.press("enter"); await pilot.pause(0.5)  # Enter in a field saves
@@ -183,7 +183,7 @@ async def main(tmp: Path) -> None:
     app = dampp.Dampp(*dampp.find_runtime())
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause(0.6)
-        assert "běží" in status("mariadb")
+        assert "running" in status("mariadb")
         await pilot.press("q"); await pilot.pause(0.5)
     assert not list(state.glob("run-*")), "containers were not stopped on quit"
     print("smoke test OK")

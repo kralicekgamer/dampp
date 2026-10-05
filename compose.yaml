@@ -1,6 +1,6 @@
 name: dampp
 
-# Verze, porty a WEB_ROOT predava dampp.py pres promenne prostredi (nastaveni: klavesa n).
+# Versions, ports and WEB_ROOT are passed by dampp.py through environment variables (settings: key n).
 services:
   mariadb:
     image: mariadb:${MARIADB_TAG:-latest}
@@ -16,7 +16,7 @@ services:
     ports:
       - "127.0.0.1:${NGINX_PORT:-80}:80"
     environment:
-      # entrypoint naplni NGINX_LOCAL_RESOLVERS, sablona ho pouzije v `resolver`
+      # the entrypoint fills NGINX_LOCAL_RESOLVERS, the template uses it in `resolver`
       NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"
     volumes:
       - "${WEB_ROOT:-./www}:/var/www/html"
@@ -25,13 +25,13 @@ services:
   php:
     image: php:${PHP_TAG:-fpm}
     environment:
-      # pro landing page (www/index.php): test pripojeni k DB a odkaz na phpMyAdmin
+      # for the landing page (www/index.php): database check and the phpMyAdmin link
       MARIADB_ROOT_PASSWORD: "${MARIADB_ROOT_PASSWORD:-root}"
       MARIADB_PORT: "${MARIADB_PORT:-3306}"
       PMA_PORT: "${PMA_PORT:-8080}"
     volumes:
       - "${WEB_ROOT:-./www}:/var/www/html"
-    # oficialni image nema mysqli/pdo_mysql - doinstaluji se pri prvnim startu kontejneru
+    # the official image lacks mysqli/pdo_mysql - they are installed on the container's first start
     command:
       - sh
       - -c
