@@ -1,6 +1,6 @@
 name: dampp
 
-# Verze, porty a WEB_ROOT predava dampp.py pres promenne prostredi (nastaveni: klavesa s).
+# Verze, porty a WEB_ROOT predava dampp.py pres promenne prostredi (nastaveni: klavesa n).
 services:
   mariadb:
     image: mariadb:${MARIADB_TAG:-latest}

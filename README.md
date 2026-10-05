@@ -28,13 +28,15 @@ Pull the images you are missing, then start the services you want. The interface
 
 | Key | Action |
 |---|---|
-| `↑` `↓` | select a service |
-| `p` | pull the image |
-| `a` / `x` / `r` | start / stop / restart |
+| `↑` `↓` or `1`–`4` | select a service |
+| `Enter` | do the obvious thing: pull, then start, then stop |
+| `s` / `x` / `r` / `p` | start / stop / restart / pull the selected service |
+| `S` / `X` / `R` / `P` | the same for all services |
 | `l` | follow the service's logs (last 20 lines, then live) |
-| `s` | settings: versions, ports, web root, database password |
-| `PgUp` `PgDn` | scroll the output |
-| `q` | quit and stop all containers |
+| `o` | open the service in your browser |
+| `n` | settings: versions, ports, web root, database password |
+| `h` | show all keys |
+| `q` | quit and stop all containers (`d` quits and leaves them running) |
 
 ## Defaults
 

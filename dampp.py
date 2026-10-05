@@ -14,9 +14,10 @@ from pathlib import Path
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Input, Label, RichLog
+from textual.widgets import Button, Footer, Header, Input, Label, RichLog, Static
 
 HERE = Path(__file__).resolve().parent
 # nastaveni a web root ziji mimo slozku s aplikaci, aby je reinstalace nesmazala
@@ -40,7 +41,7 @@ SERVICES = {
     "php": ("PHP_TAG", None),
     "phpmyadmin": ("PMA_TAG", "PMA_PORT"),
 }
-# sekce nastaveni: nazev -> [(klic, popisek)]
+# sekce nastaveni (klavesa n): nazev -> [(klic, popisek)]
 SECTIONS = {
     "MariaDB": [("MARIADB_TAG", "Verze"), ("MARIADB_PORT", "Port"), ("MARIADB_ROOT_PASSWORD", "Root heslo")],
     "nginx": [("NGINX_TAG", "Verze"), ("NGINX_PORT", "Port"), ("WEB_ROOT", "Web root")],
@@ -54,12 +55,44 @@ LOG_TAIL = 20  # kolik radku historie ukaze klavesa l
 INDENT = 29  # sirka sloupcu "cas  UROVEN  sluzba  " v konzoli
 # typicke chyby dockeru -> rada (hleda se ve vystupu prikazu, malymi pismeny)
 HINTS = [
-    (("address already in use", "port is already allocated"), "port už používá něco jiného – změň ho v nastavení (s)"),
-    (("manifest unknown", "manifest for", "not found: manifest"), "taková verze image neexistuje – zkontroluj verzi v nastavení (s)"),
+    (("address already in use", "port is already allocated"), "port už používá něco jiného – změň ho v nastavení (n)"),
+    (("manifest unknown", "manifest for", "not found: manifest"), "taková verze image neexistuje – zkontroluj verzi v nastavení (n)"),
     (("permission denied",), "chybí práva k Dockeru: sudo usermod -aG docker $USER, pak se odhlas a přihlas"),
     (("cannot connect", "failed to connect"), "Docker neběží? zkus: sudo systemctl start docker"),
     (("no such host", "timeout", "tls handshake"), "nejde se připojit k registru – zkontroluj internet"),
 ]
+# sluzby s webovym rozhranim -> klic portu (klavesa o)
+WEB = {"nginx": "NGINX_PORT", "phpmyadmin": "PMA_PORT"}
+# napoveda (klavesa h): skupina -> [(klavesy, popis)]; male pismeno = vybrana sluzba, velke = vsechny
+HELP = {
+    "Výběr": [
+        ("↑ ↓  k j", "předchozí / další služba"),
+        ("1 2 3 4", "skok na první až čtvrtou službu"),
+    ],
+    "Vybraná služba": [
+        ("Enter  mezerník", "stáhnout → spustit → zastavit"),
+        ("s", "start"),
+        ("x", "stop"),
+        ("r", "restart"),
+        ("p", "pull image"),
+        ("l", "logy zapnout / vypnout"),
+        ("o", "otevřít v prohlížeči (nginx, phpmyadmin)"),
+    ],
+    "Všechny služby": [
+        ("S", "start všech stažených"),
+        ("X", "stop všech"),
+        ("R", "restart všech běžících"),
+        ("P", "pull všech chybějících"),
+    ],
+    "Aplikace": [
+        ("n  F2", "nastavení"),
+        ("c", "vyčistit výstup"),
+        ("PgUp PgDn", "posun výstupu"),
+        ("h  ?  F1", "tato nápověda"),
+        ("d", "konec, kontejnery běží dál"),
+        ("q", "konec a zastavit kontejnery"),
+    ],
+}
 ACTIONS = {
     "start": ("startuji…", [["up", "-d"]]),
     "stop": ("zastavuji…", [["stop"]]),
@@ -194,8 +227,26 @@ class Settings(ModalScreen[dict | None]):
         self.dismiss(None)
 
 
+class Help(ModalScreen[None]):
+    BINDINGS = [("escape,h,q,question_mark,f1", "dismiss", "Zavřít")]
+
+    def compose(self) -> ComposeResult:
+        text = Text()
+        for group, keys in HELP.items():
+            text.append(f"{group}\n", "bold")
+            for key, description in keys:
+                text.append(f"  {key:<17}", "bold yellow")
+                text.append(f"{description}\n")
+            text.append("\n")
+        text.append("h / Esc = zavřít", "dim")
+        dialog = VerticalScroll(Static(text), id="help")
+        dialog.border_title = "Klávesy"
+        yield dialog
+
+
 class Dampp(App):
     TITLE = "dampp"
+    ENABLE_COMMAND_PALETTE = False
     SUB_TITLE = "MariaDB · nginx · PHP · phpMyAdmin"
     CSS = """
     .row { height: 3; margin: 1 2 0 2; padding: 0 2; background: $surface; border-left: thick $surface; }
@@ -209,7 +260,8 @@ class Dampp(App):
     .row .restart { background: $surface-lighten-3; }
     .row .restart:hover { background: $surface-lighten-2; }
     RichLog { height: 1fr; margin: 1 2; padding: 0 1; border: round $primary; border-title-color: $text-muted; }
-    Settings { align: center middle; }
+    Settings, Help { align: center middle; }
+    #help { width: 66; height: auto; max-height: 100%; border: thick $primary; border-title-style: bold; background: $surface; padding: 1 2; }
     #dialog { width: 60; height: auto; max-height: 100%; overflow-y: auto; border: thick $primary; border-title-style: bold; background: $surface; padding: 1 2 0 2; }
     .section { height: auto; padding: 0 1; border: round $primary-darken-1; border-title-color: $accent; border-title-style: bold; }
     .field { height: 1; }
@@ -219,18 +271,29 @@ class Dampp(App):
     #buttons { height: 3; align: right middle; }
     #buttons Button { margin-left: 1; }
     """
+    # v paticce jsou jen nejpouzivanejsi klavesy, vsechny ukaze napoveda (h)
     BINDINGS = [
-        ("up,k", "move(-1)", "Nahoru"),
-        ("down,j", "move(1)", "Dolů"),
-        ("a", "service('start')", "Start"),
-        ("x", "service('stop')", "Stop"),
-        ("r", "service('restart')", "Restart"),
-        ("p", "service('pull')", "Pull"),
-        ("l", "logs", "Logy"),
-        ("pageup", "scroll_log(-1)", "Výstup ↑"),
-        ("pagedown", "scroll_log(1)", "Výstup ↓"),
-        ("s", "settings", "Nastavení"),
-        ("q", "quit", "Konec"),
+        Binding("enter,space", "smart", "Akce", key_display="Enter"),
+        Binding("s,a", "service('start')", "Start"),
+        Binding("x", "service('stop')", "Stop"),
+        Binding("r", "service('restart')", "Restart"),
+        Binding("l", "logs", "Logy"),
+        Binding("n,f2", "settings", "Nastavení"),
+        Binding("h,question_mark,f1", "help", "Nápověda"),
+        Binding("q", "quit", "Konec"),
+        Binding("up,k", "move(-1)", show=False),
+        Binding("down,j", "move(1)", show=False),
+        *(Binding(str(i + 1), f"jump({i})", show=False) for i in range(len(SERVICES))),
+        Binding("p", "service('pull')", show=False),
+        Binding("o", "open", show=False),
+        Binding("S", "all('start')", show=False),
+        Binding("X", "all('stop')", show=False),
+        Binding("R", "all('restart')", show=False),
+        Binding("P", "all('pull')", show=False),
+        Binding("c", "clear", show=False),
+        Binding("pageup", "scroll_log(-1)", show=False),
+        Binding("pagedown", "scroll_log(1)", show=False),
+        Binding("d", "detach", show=False),
     ]
 
     def __init__(self, compose_cmd: list[str], runtime: str) -> None:
@@ -256,10 +319,10 @@ class Dampp(App):
                 yield Label(classes="image")
                 yield Label(classes="port")
                 yield Label(classes="status")
-                yield Button("Pull", id=f"pull-{svc}", variant="warning")
-                yield Button("Start", id=f"start-{svc}", variant="success")
-                yield Button("Stop", id=f"stop-{svc}", variant="error")
-                yield Button("Restart", id=f"restart-{svc}", classes="restart")
+                for action, variant in (("pull", "warning"), ("start", "success"), ("stop", "error"), ("restart", "default")):
+                    button = Button(action.capitalize(), id=f"{action}-{svc}", variant=variant, classes=action)
+                    button.can_focus = False  # jen pro mys; Enter patri chytre akci, ne tlacitku
+                    yield button
         out = RichLog(id="out")
         out.can_focus = False  # jinak by konzole sebrala sipky pro vyber sluzby
         yield out
@@ -277,11 +340,11 @@ class Dampp(App):
         try:
             ensure_web_root(self.cfg)
         except OSError as exc:
-            self.error(f"web root {self.cfg['WEB_ROOT']} nejde vytvořit: {exc.strerror}", hint="změň ho v nastavení (s)")
+            self.error(f"web root {self.cfg['WEB_ROOT']} nejde vytvořit: {exc.strerror}", hint="změň ho v nastavení (n)")
 
     def check_action(self, action: str, parameters: tuple) -> bool:
-        # nad otevrenym nastavenim vypni jen ovladani sluzeb (tab/focus_next musi fungovat dal)
-        return len(self.screen_stack) == 1 or action not in ("move", "service", "logs", "settings", "scroll_log")
+        # nad otevrenym dialogem funguje jen jeho vlastni ovladani (tab, focus) a ukonceni
+        return len(self.screen_stack) == 1 or action in ("quit", "focus_next", "focus_previous")
 
     # --- hlasky do konzole ------------------------------------------------
 
@@ -395,11 +458,9 @@ class Dampp(App):
                 status = "[dim]○ zastaveno[/]"
             row.query_one(".status", Label).update(status)
 
-            show = {"pull": pulled is False, "start": bool(pulled) and not running,
-                    "stop": bool(pulled) and running, "restart": bool(pulled) and running}
-            for action, visible in show.items():
+            for action in ACTIONS:
                 button = row.query_one(f"#{action}-{svc}", Button)
-                button.display = visible and not self.docker_error
+                button.display = self.wanted(action, svc) and not self.docker_error
                 button.disabled = bool(busy)
 
     # --- akce -------------------------------------------------------------
@@ -411,6 +472,56 @@ class Dampp(App):
     def action_move(self, delta: int) -> None:
         self.selected = (self.selected + delta) % len(SERVICES)
         self.render_rows()
+
+    def action_jump(self, index: int) -> None:
+        self.selected = index
+        self.render_rows()
+
+    def wanted(self, action: str, svc: str) -> bool:
+        """Dava akce pro sluzbu prave ted smysl? (stejne podminky jako viditelnost tlacitek)"""
+        pulled, running = self.pulled.get(svc), self.state.get(svc) == "running"
+        return {"pull": pulled is False, "start": bool(pulled) and not running,
+                "stop": bool(pulled) and running, "restart": bool(pulled) and running}[action]
+
+    def action_smart(self) -> None:
+        """Enter: nestazeno -> pull, zastaveno -> start, bezi -> stop."""
+        svc = self.current
+        self.do(next((a for a in ("pull", "stop") if self.wanted(a, svc)), "start"), svc)
+
+    def action_all(self, action: str) -> None:
+        targets = [svc for svc in SERVICES if self.wanted(action, svc)]
+        if not targets:
+            self.info(f"{action} všech: není co dělat")
+        for svc in targets:
+            self.do(action, svc)
+
+    def action_open(self) -> None:
+        svc = self.current
+        if svc not in WEB:
+            self.warn("nemá webové rozhraní – otevřít jde nginx a phpmyadmin", svc)
+        elif self.state.get(svc) != "running":
+            self.warn("neběží – nejdřív ji spusť (s)", svc)
+        else:
+            port = self.cfg[WEB[svc]]
+            url = "http://localhost" if port == "80" else f"http://localhost:{port}"
+            opener = shutil.which("xdg-open")
+            if opener:
+                # vystup prohlizece nesmi do terminalu, rozbil by TUI
+                subprocess.Popen([opener, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 start_new_session=True)
+                self.info(f"otevírám {url}", svc)
+            else:
+                self.warn(f"chybí xdg-open – otevři ručně {url}", svc)
+
+    def action_clear(self) -> None:
+        self.out.clear()
+
+    def action_help(self) -> None:
+        self.push_screen(Help())
+
+    def action_detach(self) -> None:
+        """Konec bez zastaveni kontejneru."""
+        self.exit()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         action, svc = event.button.id.split("-", 1)
